@@ -31,7 +31,7 @@ trait Core extends Common
   with DCE
   with DSCF
   with Pickling
-  with Trampoline {
+  with Lower {
   this: AlphaEq with Source =>
 
   import API._
@@ -355,8 +355,8 @@ trait Core extends Common
     /** Lowering. The canonical compiler backend. */
     lazy val lower = trampoline
 
-    /** Delegates to [[Trampoline.transform]] */
-    lazy val trampoline = Trampoline.transform
+    /** Delegates to [[Lower.trampoline]] */
+    lazy val trampoline = Lower.trampoline
 
     // -------------------------------------------------------------------------
     // Miscellaneous utilities
