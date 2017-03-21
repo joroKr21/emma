@@ -19,6 +19,7 @@ package compiler.lang.core
 import compiler.Common
 import compiler.ir.DSCFAnnotations._
 import compiler.lang.AlphaEq
+import compiler.lang.cf.ControlFlow
 import compiler.lang.comprehension.Comprehension
 import compiler.lang.source.Source
 
@@ -31,8 +32,9 @@ trait Core extends Common
   with DCE
   with DSCF
   with Pickling
-  with Trampoline {
-  this: AlphaEq with Source =>
+  with Trampoline
+  with CoreUtils {
+  this: AlphaEq with Source with ControlFlow =>
 
   import API._
   import UniverseImplicits._
@@ -357,6 +359,12 @@ trait Core extends Common
 
     /** Delegates to [[Trampoline.transform]] */
     lazy val trampoline = Trampoline.transform
+
+    // -------------------------------------------------------------------------
+    // Utils API
+    // -------------------------------------------------------------------------
+
+    lazy val enclose = CoreUtils.enclose
 
     // -------------------------------------------------------------------------
     // Miscellaneous utilities
