@@ -20,10 +20,11 @@ import compiler.Common
 import compiler.lang.cf.ControlFlow
 import compiler.lang.core.Core
 
-/** Static (compile-time) optimizations. */
+/** Language optimizations. */
 trait Optimizations extends Common
   with FoldForestFusion
-  with FoldGroupFusion {
+  with FoldGroupFusion
+  with ComprehensionCompiler {
   this: Core with ControlFlow =>
 
   /** Static (compile-time) optimizations. */
@@ -32,5 +33,8 @@ trait Optimizations extends Common
     /** Performs [[FoldForestFusion.foldForestFusion()]] followed by [[FoldGroupFusion.foldGroupFusion]]. */
     lazy val foldFusion: u.Tree => u.Tree =
       FoldForestFusion.foldForestFusion andThen FoldGroupFusion.foldGroupFusion
+
+    /** Delegates to [[ComprehensionCompiler.apply()]]. */
+    def comprehend[C, R](r: Reified[C, R])(c: C): R = ComprehensionCompiler(r)(c)
   }
 }
