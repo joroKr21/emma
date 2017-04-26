@@ -23,12 +23,13 @@ import compiler.lang.cf.ControlFlow
 import compiler.lang.core.Core
 import util.Graphs._
 
+import scalaz.Tree
+
 import shapeless._
 
 import scala.collection.Map
 import scala.collection.SortedMap
 import scala.collection.breakOut
-import scalaz.Tree
 
 /** The fold-fusion optimization. */
 private[compiler] trait FoldForestFusion extends Common {
@@ -328,7 +329,7 @@ private[compiler] trait FoldForestFusion extends Common {
      */
     lazy val foldForestFusion: u.Tree => u.Tree = tree => {
       val cfg = CFG.graph(tree)
-      api.BottomUp.withOwner.transformWith {
+      api.BottomUp.withOwner().transformWith {
         // Fuse only folds within a single block.
         case Attr.inh(let@core.Let(vals, defs, expr), owner :: _) =>
           val valIndex = lhs2rhs(vals)

@@ -22,7 +22,7 @@ import compiler.ir.DSCFAnnotations._
 import util.Monoids._
 
 import cats.instances.all._
-import shapeless._
+import shapeless.syntax.singleton._
 
 import scala.collection.breakOut
 
@@ -33,14 +33,17 @@ private[backend] trait Caching extends Common {
   private[backend] object Caching {
 
     import API._
+    import Attr._
     import Core.{Lang => core}
     import UniverseImplicits._
 
-    private type CacheFlags = Map[u.Symbol, (Boolean, Int)]
-    private type CacheStore = Map[u.Symbol, u.ValDef]
-
     private val runtime = Some(Ops.ref)
     private val cache   = Ops.cache
+
+    // Attribute definitions
+    private val Cached = ~@('cached ->> Map.empty[u.Symbol, u.ValDef])(overwrite)
+    private val ShouldCache = ~@('shouldCache ->> Map.empty[u.Symbol, (Boolean, Int)])(
+      merge(catsKernelStdMonoidForTuple2(disj, implicitly)))
 
     /** Does `sym` have a type of `DataBag` or a subtype? */
     private def isDataBag(sym: u.Symbol) =
@@ -73,19 +76,19 @@ private[backend] trait Caching extends Common {
      */
     lazy val addCacheCalls: u.Tree => u.Tree = tree => {
       // Per DataBag reference, collect flag for access in a loop and ref count.
-      val refs = api.TopDown.withOwnerChain.accumulateWith[CacheFlags] {
+      val refs = api.TopDown.withOwnerChain.accum(ShouldCache) {
         // Increment counter and set flag if referenced in a loop.
-        case Attr.inh(core.BindingRef(target), owners :: _) if isDataBag(target) =>
+        case core.BindingRef(target) ~@ OwnerChain(owners) if isDataBag(target) =>
           val inLoop = owners.reverseIterator.takeWhile {
             owner => owner != target.owner && !isSuffix(owner)
           }.exists(isLoop)
           Map(target -> (inLoop, 1))
         // Arguments to loop methods are considered as referenced in the loop.
-        case Attr.none(core.DefCall(None, method, _, argss)) if isLoop(method) =>
+        case core.DefCall(None, method, _, argss) ~@ _ if isLoop(method) =>
           argss.flatten.collect { case core.Ref(target) if isDataBag(target) =>
             target -> (true, 1)
           } (breakOut)
-      } (merge(catsKernelStdMonoidForTuple2(disj, implicitly))).traverseAny._acc(tree).head
+      }.traverseAny._acc(tree).head
 
       /** Cache when referenced in a loop or more than once. */
       def shouldCache(x: u.Symbol) = {
@@ -94,7 +97,7 @@ private[backend] trait Caching extends Common {
       }
 
       /** Creates cached values for parameters of methods and lambdas. */
-      def cacheBindings(binds: Seq[u.ValDef]): CacheStore =
+      def cacheBindings(binds: Seq[u.ValDef]): Map[u.Symbol, u.ValDef] =
         binds.collect { case core.BindingDef(x, _) if shouldCache(x) =>
           val y = api.ValSym(x.owner, api.TermName.fresh(x), x.info.widen)
           val targs = Seq(api.Type.arg(1, x.info))
@@ -102,19 +105,21 @@ private[backend] trait Caching extends Common {
           x -> core.ValDef(y, core.DefCall(runtime, cache, targs, argss))
         } (breakOut)
 
-      api.TopDown.withParent.accumulate[CacheStore] {
-        case core.Lambda(_, params, _) =>
+      api.TopDown.withParent.accum(Cached) {
+        case core.Lambda(_, params, _) ~@ _ =>
           cacheBindings(params)
-        case core.DefDef(method, _, paramss, _) if !isLoop(method) =>
+        case core.DefDef(method, _, paramss, _) ~@ _ if !isLoop(method) =>
           cacheBindings(paramss.flatten)
-        case core.Let(vals, _, _) =>
+        case core.Let(vals, _, _) ~@ _ =>
           cacheBindings(vals.filter {
             case core.ValDef(_, core.DefCall(_, m, _, _)) => !API.DataBag$.ops(m)
             case _ => true
           })
-      } (overwrite).transformWith {
+      }.transformWith {
         // Prepend cached parameters, replace cached values.
-        case Attr(let @ core.Let(vals, defs, expr), cached :: _, parent :: _, _) =>
+        case (let @ core.Let(vals, defs, expr))
+          ~@* Seq(Cached(cached), Parent(parent), _*) =>
+
           val cachedParams = (parent match {
             case Some(core.Lambda(_, ps, _)) => ps
             case Some(core.DefDef(_, _, pss, _)) => pss.flatten
@@ -129,11 +134,11 @@ private[backend] trait Caching extends Common {
           else core.Let(cachedParams ++ cachedVals, defs, expr)
 
         // Dont't replace references in cache(...).
-        case Attr.inh(t, Some(call) :: _)
+        case t ~@ Parent(Some(call))
           if call.symbol == cache => t
 
         // Replace references to cached parameters or values.
-        case Attr.acc(core.Ref(x), cached :: _) if cached.contains(x) =>
+        case core.Ref(x) ~@ Cached(cached) if cached.contains(x) =>
           core.Ref(cached(x).symbol.asTerm)
       }._tree(tree)
     }

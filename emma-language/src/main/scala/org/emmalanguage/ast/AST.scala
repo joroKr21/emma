@@ -16,8 +16,6 @@
 package org.emmalanguage
 package ast
 
-import shapeless._
-
 /** Common super-trait for macro- and runtime-compilation. */
 trait AST extends CommonAST
   with Bindings
@@ -48,6 +46,7 @@ trait AST extends CommonAST
     with ValueAPI
     with VariableAPI
 
+  import Attr._
   import universe._
   import internal._
   import reificationSupport._
@@ -76,7 +75,7 @@ trait AST extends CommonAST
   lazy val stubTypeTrees = api.TopDown.break
     .withParent.transformWith {
       // Leave `val/var` types to be inferred by the compiler.
-      case Attr.inh(api.TypeQuote(tpe), Some(api.BindingDef(lhs, rhs)) :: _)
+      case api.TypeQuote(tpe) ~@ Parent(Some(api.BindingDef(lhs, rhs)))
         if !lhs.isParameter && rhs.nonEmpty && tpe =:= rhs.tpe.dealias.widen =>
         api.TypeQuote.empty
       case Attr.none(api.TypeQuote(tpe)) =>
@@ -122,7 +121,7 @@ trait AST extends CommonAST
     }
 
     api.BottomUp.withParent.transformWith {
-      case Attr.inh(tree, Some(_: u.Block) :: _)
+      case tree ~@ Parent(Some(u.Block(_, _)))
         if isStat(tree) => tree
       case Attr.none(tree)
         if isStat(tree) => api.Block(Seq(tree))

@@ -65,7 +65,7 @@ private[comprehension] trait ReDeSugar extends Common {
         arg -> core.DefCall(tgt, app, argss = Seq(Seq(core.ValRef(arg))))
       }
 
-      api.TopDown.withOwner.accumulate(Attr.group {
+      api.TopDown.withOwner().accumulate(Attr.group {
         // Accumulate a LHS -> (arg, body) Map from lambdas
         case core.ValDef(lhs, core.Lambda(_, Seq(core.ParDef(arg, _)), body)) =>
           lhs -> (arg, body)
@@ -109,7 +109,7 @@ private[comprehension] trait ReDeSugar extends Common {
     def desugar(monad: u.Symbol): u.Tree => u.Tree = {
       // construct comprehension syntax helper for the given monad
       val cs = new Comprehension.Syntax(monad)
-      api.TopDown.withOwner.transformWith {
+      api.TopDown.withOwner().transformWith {
         // Match: `for { x <- { $vals; $rhs}; $qs*; } yield $expr`
         case Attr.inh(
           cs.Comprehension(Seq(cs.Generator(x, core.Let(vals, Seq(), core.Ref(rhs))), qs@_*), cs.Head(expr)),
